@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage; // ESSENCIAL PARA A FOTO
 
 class AuthController extends Controller
 {
@@ -14,8 +15,13 @@ class AuthController extends Controller
     }
 
     public function login(Request $request) {
-        $credentials = $request->only('email', 'password');
+        $credentials = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+
         if (Auth::attempt($credentials)) {
+            $request->session()->regenerate();
             return redirect()->intended('/dashboard');
         }
         return back()->with('error', 'E-mail ou senha incorretos.');
@@ -40,12 +46,36 @@ class AuthController extends Controller
             'level' => 1,
         ]);
 
-        // Redireciona para o login com mensagem de sucesso
-        return redirect('/login')->with('success', 'Cadastro realizado com sucesso! Faça o login para correr.');
+        return redirect('/login')->with('success', 'Cadastro realizado! Faça o login.');
     }
 
-    public function logout() {
+    // O MÉTODO QUE ESTAVA FALTANDO E CAUSOU O ERRO
+    public function updatePhoto(Request $request)
+    {
+        $request->validate([
+            'photo' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+        ]);
+
+        $user = Auth::user();
+
+        // Se o piloto já tiver uma foto, deletamos a antiga para não lotar o servidor
+        if ($user->profile_photo) {
+            Storage::disk('public')->delete($user->profile_photo);
+        }
+
+        // Salva a nova imagem na pasta 'profile_photos' dentro de 'storage/app/public'
+        $path = $request->file('photo')->store('profile_photos', 'public');
+        
+        $user->profile_photo = $path;
+        $user->save();
+
+        return back()->with('success', 'Foto do cockpit atualizada com sucesso!');
+    }
+
+    public function logout(Request $request) {
         Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
         return redirect('/login');
     }
 }
